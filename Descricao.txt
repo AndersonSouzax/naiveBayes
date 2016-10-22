@@ -1,0 +1,3 @@
+O arquivo chamado Nayve.sql é o próprio dispositivo nayve bayes
+isso é, e a funçao que determina a qual  classe pertence um indivíduo.
+O arquivo principal contém os treinamentos e as conclusões de acertos.

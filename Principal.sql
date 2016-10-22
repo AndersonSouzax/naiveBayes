@@ -1,0 +1,133 @@
+IF EXISTS(SELECT OBJECT_ID('TEMPDB..#Taxas','U'))
+DROP TABLE #Taxas
+IF EXISTS(SELECT OBJECT_ID('TEMPDB..#Rights','U'))
+DROP TABLE #Rights
+GO
+CREATE TABLE #Taxas(     /*TABELA COM AS TAXAS DE ACERTOS MEDIOS PARA CADA CLASSE*/
+ PorClasse1 NUMERIC(5,2),
+ PorClasse2 NUMERIC(5,2),
+ PorClasse3 NUMERIC(5,2),
+ NumDeAcertos INT,
+ Config INT
+);
+CREATE TABLE #Rights(    --TABELA COM OS ACERTOS MEDIOS,MAXIMOS E MINIMOS A CADA CONFIGURAÇÃO
+acertoMaximo NUMERIC(5,2),
+acertoMedio  NUMERIC(5,2),
+acertoMinimo NUMERIC(5,2),
+Config INT
+);
+
+
+DECLARE @NumInd INT = 1 --INICIALMENTE RETIRA-SE APENAS 1 ELEMENTO DE CADA CLASSE
+WHILE(@NumInd < 47)     --PROCESSO RODADO ATE QUE RESTEM APENAS 3 INDIVIDUOS DE TREINAMENTO 
+BEGIN
+DECLARE @Mont FLOAT   
+DECLARE @AcertRodClas1 INT = 0 
+DECLARE @AcertRodClas2 INT = 0
+DECLARE @AcertRodClas3 INT = 0
+DECLARE @AceTotal1 INT
+DECLARE @AceTotal2 INT
+DECLARE @AceTotal3 INT
+DECLARE @Rods INT = 0
+DECLARE @C1 FLOAT
+DECLARE @C2 FLOAT
+DECLARE @C3 FLOAT
+DECLARE @C4 FLOAT
+DECLARE @Res INT 
+DECLARE @Individuos TABLE  /*TABELA VARIÁVEL QUE CONTERÁ OS INDIVIDUOS PARA TESTE*/
+(
+ Ca1 FLOAT,
+ Ca2 FLOAT,
+ Ca3 FLOAT,
+ Ca4 FLOAT, 
+ Cla FLOAT
+);
+
+DECLARE @Amax TABLE(
+Tax NUMERIC(5,2)
+);
+
+INSERT INTO @Individuos  /*INSERINDO NUMERO DE INDIVÍDUOS DE CADA CLASSE*/
+SELECT TOP(@NumInd) * FROM Características A WHERE A.Classe = 1
+
+INSERT INTO @Individuos
+SELECT TOP(@NumInd) * FROM Características A WHERE A.Classe = 2
+        
+INSERT INTO @Individuos
+SELECT TOP(@NumInd) * FROM Características A WHERE A.Classe = 3
+
+BEGIN TRANSACTION     
+DELETE TOP(@NumInd) FROM Características 
+WHERE Classe = 1
+
+DELETE TOP(@NumInd) FROM Características 
+WHERE Classe = 2
+
+DELETE TOP(@NumInd) FROM Características 
+WHERE Classe = 3
+
+WHILE(@Rods < 30) /*30 RODADAS DE TREINAMENTO*/ 
+DECLARE @NumAcertClas1 INT = 0
+DECLARE @NumAcertClas2 INT = 0
+DECLARE @NumAcertClas3 INT = 0
+BEGIN
+DECLARE @Time INT = 1 --VARIÁVEL REPRESENTANDO A CLASSE TESTADA POR VEZ
+WHILE(@Time < 4) 
+BEGIN
+DECLARE CA_CURSOR CURSOR FOR
+SELECT A.Ca1,A.Ca2,A.Ca3,A.Ca4 FROM @Individuos A
+WHERE A.Cla = @Time
+OPEN CA_CURSOR
+
+FETCH NEXT FROM CA_CURSOR
+INTO @C1,@C2,@C3,@C4
+WHILE @@FETCH_STATUS = 0
+BEGIN
+   SET @Res = dbo.Treinamento(@C1,@C2,@C3,@C4)--FUNÇÃO PARA DETERMINAR A CLASSE DO INDIVÍDUO
+
+   IF @Res = 1 AND @Time = 1 
+   SET @NumAcertClas1  = @NumAcertClas1+1
+
+   IF @Res = 2 AND @Time = 2 
+   SET @NumAcertClas2  = @NumAcertClas2+1
+
+   IF @Res = 3 AND @Time = 3 
+   SET @NumAcertClas3  = @NumAcertClas3+1
+   
+
+   FETCH NEXT FROM CA_CURSOR
+   INTO @C1,@C2,@C3,@C4
+END
+CLOSE CA_CURSOR
+SET @Time = @Time+1
+END /*ACERTOS DE CADA CLASSE POR RODADA*/
+SET @AcertRodClas1 = @AcertRodClas1+(@NumAcertClas1/@NumInd)
+SET @AcertRodClas2 = @AcertRodClas2+(@NumAcertClas2/@NumInd)
+SET @AcertRodClas3 = @AcertRodClas3+(@NumAcertClas3/@NumInd)
+SET @Rods = @Rods + 1
+END
+INSERT INTO @Amax
+VALUES
+(@AcertRodClas1),
+(@AcertRodClas2),
+(@AcertRodClas3)
+INSERT INTO #Rights /*INSERINDO A TAXAS DE ACERTO MAXIMA,MEDIA E MINIMA*/
+SELECT
+MAX(tax),AVG(Tax),MIN(Tax),@NumInd
+FROM @Amax
+
+DEALLOCATE CA_CURSOR
+SET @Mont = @AcertRodClas1 + @AcertRodClas2 + @AcertRodClas3
+SET @AceTotal1 = @AcertRodClas1/@Mont
+SET @AceTotal2 = @AcertRodClas2/@Mont
+SET @AceTotal3 = @AcertRodClas3/@Mont
+
+INSERT INTO #Taxas /*INSERINDO NA TABELA #Taxas AS TAXAS DE ACERTO MEDIA PARA AS CLASSES*/
+VALUES
+(@AceTotal1,@AceTotal2,@AceTotal3,@Mont,@NumInd)
+SET @NumInd =  @NumInd+1
+END
+
+SELECT * FROM #Rights /*ACERTOS MEDIOS,MAXIMOS E MINIMOS A CADA CONFIGURAÇÃO*/
+SELECT * FROM #Taxas  /*Taxas de acerto media por Configuração*/
+ROLLBACK TRANSACTION 
